@@ -7,6 +7,7 @@ receipt generation, and security access control.
 import sys
 import unittest
 import sqlite3
+import os
 from datetime import datetime
 
 # Import application
@@ -96,9 +97,10 @@ class SmartParkTestSuite(unittest.TestCase):
         self.client.post("/logout", follow_redirects=True)
 
         # Admin login
+        admin_pwd = os.environ.get("SMARTPARK_ADMIN_PASSWORD", "Pass@123")
         res = self.client.post("/login", data={
             "username": "admin",
-            "password": "Admin@12345"
+            "password": admin_pwd
         }, follow_redirects=True)
         self.assertIn(b"Welcome, SmartPark Administrator!", res.data)
 
@@ -413,6 +415,40 @@ class SmartParkTestSuite(unittest.TestCase):
         res = self.client.get(f"/receipt/{sess_a}")
         self.assertEqual(res.status_code, 200)
         self.assertIn(b"MH15 AA 1111", res.data)
+
+    def test_10_admin_password_env_sync(self):
+        """Verify Admin password dynamically syncs from SMARTPARK_ADMIN_PASSWORD, hashes properly, and rejects old passwords."""
+        from werkzeug.security import generate_password_hash
+
+        # Step A: Simulate an existing database that has the legacy hash for Admin@12345
+        with app.db() as con:
+            con.execute("UPDATE users SET password_hash=? WHERE username='admin'", 
+                        (generate_password_hash("Admin@12345"),))
+            stored_hash = con.execute("SELECT password_hash FROM users WHERE username='admin'").fetchone()["password_hash"]
+
+        # Verify old password would match old hash
+        self.assertTrue(app.check_password_hash(stored_hash, "Admin@12345"))
+
+        # Step B: Set SMARTPARK_ADMIN_PASSWORD to Pass@123 and run init_db()
+        os.environ["SMARTPARK_ADMIN_PASSWORD"] = "Pass@123"
+        app.init_db()
+
+        with app.db() as con:
+            new_hash = con.execute("SELECT password_hash FROM users WHERE username='admin'").fetchone()["password_hash"]
+
+        # Verify stored value is a valid secure hash, not plaintext
+        self.assertNotEqual(new_hash, "Pass@123")
+        self.assertTrue(new_hash.startswith("scrypt:") or new_hash.startswith("pbkdf2:"))
+        self.assertTrue(app.check_password_hash(new_hash, "Pass@123"))
+        self.assertFalse(app.check_password_hash(new_hash, "Admin@12345"))
+
+        # Step C: Verify login with new password succeeds and old password fails
+        res_fail = self.client.post("/login", data={"username": "admin", "password": "Admin@12345"}, follow_redirects=True)
+        self.assertIn(b"Invalid username or password.", res_fail.data)
+
+        res_ok = self.client.post("/login", data={"username": "admin", "password": "Pass@123"}, follow_redirects=True)
+        self.assertIn(b"Welcome, SmartPark Administrator!", res_ok.data)
+
 
 if __name__ == "__main__":
     unittest.main()

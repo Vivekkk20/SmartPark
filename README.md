@@ -99,7 +99,7 @@ python test_suite.py
 
 - **Admin Account**:
   - Username: `admin`
-  - Password: `Admin@12345`
+  - Password: `Pass@123` (or configured via `SMARTPARK_ADMIN_PASSWORD`)
   - Full access to all active vehicles, all receipts, rate settings, demo time adjustments, and slot reassignments.
 
 - **Normal User Account**:
@@ -119,6 +119,7 @@ gunicorn app:app --workers 2 --bind 0.0.0.0:$PORT
 
 ### Environment Variables
 - `SMARTPARK_SECRET_KEY`: Set to a cryptographically secure random string (e.g. `openssl rand -hex 32`).
+- `SMARTPARK_ADMIN_PASSWORD`: Secure password for the `admin` account (defaults to `Pass@123` if omitted).
 - `PYTHON_VERSION`: `3.10` or higher.
 
 ### Database Persistence on Render

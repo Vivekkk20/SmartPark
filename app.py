@@ -7,9 +7,10 @@ from datetime import datetime
 from pathlib import Path
 import math
 import uuid
+import os
 
 app = Flask(__name__)
-app.secret_key = __import__("os").environ.get("SMARTPARK_SECRET_KEY", "smartpark-demo-secret-change-before-deployment")
+app.secret_key = os.environ.get("SMARTPARK_SECRET_KEY", "smartpark-demo-secret-change-before-deployment")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 DB_PATH = Path(__file__).with_name("smartpark.db")
@@ -130,14 +131,21 @@ def init_db():
             con.execute("UPDATE slots SET category='two_wheeler' WHERE slot_code IN ('S01','S02','S03','S04','S05','S06')")
             con.execute("UPDATE slots SET category='four_wheeler' WHERE slot_code IN ('S07','S08','S09','S10','S11','S12')")
 
-        # Seed admin
-        admin = con.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+        # Seed or sync admin credentials securely
+        admin_pwd = os.environ.get("SMARTPARK_ADMIN_PASSWORD", "Pass@123")
+        admin = con.execute("SELECT id, password_hash FROM users WHERE username='admin'").fetchone()
         if not admin:
             con.execute(
                 "INSERT INTO users(username,full_name,password_hash,role,created_at) VALUES(?,?,?,?,?)",
-                ("admin", "SmartPark Administrator", generate_password_hash("Admin@12345"), "admin",
+                ("admin", "SmartPark Administrator", generate_password_hash(admin_pwd), "admin",
                  datetime.now().isoformat(timespec="seconds")),
             )
+        else:
+            if not check_password_hash(admin["password_hash"], admin_pwd):
+                con.execute(
+                    "UPDATE users SET password_hash=? WHERE id=?",
+                    (generate_password_hash(admin_pwd), admin["id"]),
+                )
 
         # Seed slots if not present
         for i in range(1, TOTAL_SLOTS + 1):
@@ -315,6 +323,15 @@ def login():
         password = request.form.get("password", "")
         with db() as con:
             user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if user and user["role"] == "admin":
+                admin_pwd = os.environ.get("SMARTPARK_ADMIN_PASSWORD", "Pass@123")
+                if not check_password_hash(user["password_hash"], admin_pwd):
+                    con.execute(
+                        "UPDATE users SET password_hash=? WHERE id=?",
+                        (generate_password_hash(admin_pwd), user["id"]),
+                    )
+                    user = con.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+
         if user and check_password_hash(user["password_hash"], password):
             session.clear()
             session["user_id"] = user["id"]
