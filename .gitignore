@@ -1,0 +1,49 @@
+# Python Bytecode and Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Backup and Temporary Files
+*.bak
+*.tmp
+*.temp
+*~
+*.swp
+
+# SQLite Databases & Local Data (Preserves local DB while excluding personal/vehicle records from GitHub)
+*.db
+*.sqlite
+*.sqlite3
+smartpark.db
+smartpark_test.db
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.env
+*.pem
+*.key
+
+# Virtual Environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Debug and System Logs
+*.log
+logs/
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+desktop.ini

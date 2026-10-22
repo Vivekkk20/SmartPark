@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Parking History{% endblock %}
+{% block heading %}Parking History & Records{% endblock %}
+
+{% block content %}
+<section class="welcome-row">
+  <div>
+    <h2>Parking Sessions & Receipts</h2>
+    <p>Search by customer, vehicle number, or slot to review completed sessions and receipts.</p>
+  </div>
+  <a class="btn primary" href="{{ url_for('entry') }}">＋ Register vehicle</a>
+</section>
+
+<section class="panel recent-panel">
+  <form class="search-form" method="get">
+    <input name="q" value="{{ q }}" placeholder="Search customer, vehicle number (e.g. MH15), or slot code">
+    <button class="btn primary" type="submit">Search</button>
+    {% if q %}
+    <a class="btn outline" href="{{ url_for('history') }}">Clear</a>
+    {% endif %}
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Customer</th>
+          <th>Vehicle</th>
+          <th>Category</th>
+          <th>Slot</th>
+          <th>Entry</th>
+          <th>Exit</th>
+          <th>Duration</th>
+          <th>Advance</th>
+          <th>Total</th>
+          <th>Settlement</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>#{{ s.id }}</td>
+          <td><strong>{{ s.customer_name }}</strong></td>
+          <td><code style="color:var(--ink);font-family:monospace;font-weight:600;">{{ s.vehicle_number }}</code></td>
+          <td>
+            {% if s.vehicle_category == 'two_wheeler' %}
+            <span style="color:var(--cyan);font-size:10px;font-weight:600;">🏍 2-Wheeler</span>
+            {% else %}
+            <span style="color:var(--blue);font-size:10px;font-weight:600;">🚗 4-Wheeler</span>
+            {% endif %}
+          </td>
+          <td><span class="slot-tag">{{ s.slot_code }}</span></td>
+          <td>{{ s.entry_time.replace('T',' ') }}</td>
+          <td>{{ s.exit_time.replace('T',' ') if s.exit_time else '—' }}</td>
+          <td>
+            {% if s.duration_minutes %}
+            {{ s.duration_minutes }} min
+            {% if s.demo_adjusted %}<small style="color:var(--orange);">*demo</small>{% endif %}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            {% if s.advance_amount and s.advance_amount > 0 %}
+            <span style="color:var(--green);font-size:11px;">₹{{ "%.2f"|format(s.advance_amount) }}</span>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            {% if s.amount is not none %}
+            <strong>₹{{ "%.2f"|format(s.amount) }}</strong>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            {% if s.payment_method %}
+            <span style="font-size:10px;color:var(--ink2);">{{ s.payment_method|replace('_',' ')|upper }}</span>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            <span class="status {{ s.status }}">{{ s.status|title }}</span>
+          </td>
+          <td>
+            {% if s.status == 'active' %}
+            <a class="btn small outline" href="{{ url_for('exit_vehicle', session_id=s.id) }}">Exit →</a>
+            {% elif s.status == 'completed' %}
+            <a class="receipt-link" href="{{ url_for('receipt', session_id=s.id) }}">📄 Receipt</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="13" class="table-empty">No matching parking records found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

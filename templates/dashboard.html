@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block heading %}Dashboard & Parking Operations{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<section class="welcome-row">
+  <div>
+    <h2>{% if session.get("role") == "admin" %}Smart Parking Overview{% else %}My Parking Dashboard{% endif %}</h2>
+    <p>{% if session.get("role") == "admin" %}Real-time slot allocation, 3D zone visualization, and revenue metrics.{% else %}Monitor your vehicle sessions and access instant payment checkout.{% endif %}</p>
+  </div>
+  <a class="btn primary" href="{{ url_for('entry') }}">＋ Register vehicle</a>
+</section>
+
+<!-- Stats Grid (6 cards) -->
+<section class="stats-grid">
+  <article class="stat-card">
+    <div class="stat-top"><span>Total Slots</span><span class="stat-icon cyan">▦</span></div>
+    <div class="stat-number" id="stat-total">{{ stats.total }}</div>
+    <div class="stat-foot">S01–S12 configured spaces</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top"><span>Available Slots</span><span class="stat-icon green">✓</span></div>
+    <div class="stat-number green-text" id="stat-avail">{{ stats.available }}</div>
+    <div class="stat-foot"><span class="tiny-dot green-bg"></span> Ready for check-in</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top"><span>Two-Wheeler Zone</span><span class="stat-icon cyan">🏍</span></div>
+    <div class="stat-number cyan-text" id="stat-2w-occ">{{ stats.two_wheeler.occupied }} / {{ stats.two_wheeler.total }}</div>
+    <div class="stat-foot" id="stat-2w-foot">{{ stats.two_wheeler.available }} free (₹{{ "%.0f"|format(rates.two_wheeler) }}/hr)</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top"><span>Four-Wheeler Zone</span><span class="stat-icon blue">🚗</span></div>
+    <div class="stat-number" style="color:var(--blue);" id="stat-4w-occ">{{ stats.four_wheeler.occupied }} / {{ stats.four_wheeler.total }}</div>
+    <div class="stat-foot" id="stat-4w-foot">{{ stats.four_wheeler.available }} free (₹{{ "%.0f"|format(rates.four_wheeler) }}/hr)</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top"><span>Active Sessions</span><span class="stat-icon orange">▣</span></div>
+    <div class="stat-number orange-text" id="stat-active">{{ stats.active }}</div>
+    <div class="stat-foot">Vehicles currently parked</div>
+  </article>
+
+  <article class="stat-card">
+    <div class="stat-top"><span>{% if session.get("role") == "admin" %}Today's Revenue{% else %}My Payments Today{% endif %}</span><span class="stat-icon purple">₹</span></div>
+    <div class="stat-number" id="stat-rev">₹{{ "%.0f"|format(stats.revenue) }}</div>
+    <div class="stat-foot">{{ stats.completed_today }} completed session(s)</div>
+  </article>
+</section>
+
+<!-- Category Selection Filter Tabs -->
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin:22px 0 14px;">
+  <div style="display:flex;gap:8px;" id="zone-tabs">
+    <button class="btn small primary" id="tab-all" data-category="all">All Slots (12)</button>
+    <button class="btn small outline" id="tab-2w" data-category="two_wheeler">🏍 Two-Wheeler Zone (S01–S06)</button>
+    <button class="btn small outline" id="tab-4w" data-category="four_wheeler">🚗 Four-Wheeler Zone (S07–S12)</button>
+  </div>
+  <div style="font-size:11px;color:var(--ink3);">
+    Interactive 3D Smart Lot · Click a slot to inspect details
+  </div>
+</div>
+
+<!-- 3D viewer + Active Sessions row -->
+<section class="content-grid">
+  <!-- 3D Parking Lot Viewer Panel -->
+  <article class="panel" style="padding:0;overflow:hidden;">
+    <div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);background:var(--bg2);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <h3 style="font:700 13px var(--font-head);color:var(--ink);margin:0;">3D Smart Parking Lot</h3>
+        <span class="mode-pill" style="font-size:9px;padding:3px 8px;">WebGL 3D</span>
+      </div>
+      <div class="legend" style="font-size:11px;">
+        <span><i class="legend-dot free"></i> Free</span>
+        <span><i class="legend-dot busy"></i> Occupied</span>
+        <span style="color:var(--cyan);margin-left:6px;">🏍 Zone A (S01–06)</span>
+        <span style="color:var(--blue);">🚗 Zone B (S07–12)</span>
+      </div>
+    </div>
+
+    <div id="viewer-3d" style="height:360px;">
+      <div class="viewer-loading" id="viewer-loading">
+        <div class="viewer-loading-inner">
+          <div class="spin"></div>
+          <span>Rendering 3D Smart Lot…</span>
+        </div>
+      </div>
+
+      <!-- Slot Info Overlay Panel -->
+      <div class="slot-info-panel" id="slot-info-panel">
+        <button class="slot-info-close" id="slot-info-close" aria-label="Close">×</button>
+        <div class="slot-info-code" id="sip-code">S01</div>
+        <div class="slot-info-row">Category: <span id="sip-category" style="font-weight:600;">—</span></div>
+        <div class="slot-info-row">Status: <span id="sip-status">—</span></div>
+        <div class="slot-info-row" id="sip-vehicle-row">Vehicle: <span id="sip-vehicle">—</span></div>
+        <div class="slot-info-row" id="sip-since-row">Entry: <span id="sip-since">—</span></div>
+        <div class="slot-info-row" id="sip-adv-row" style="display:none;">Advance: <span id="sip-adv" style="color:var(--green);">—</span></div>
+        <div style="margin-top:10px;" id="sip-exit-row"></div>
+      </div>
+
+      <!-- Camera & Mode Controls -->
+      <div class="viewer-controls">
+        <button class="viewer-btn" id="btn-reset-cam" title="Reset Camera">↺ Reset</button>
+        <button class="viewer-btn" id="btn-cam-2w" title="Focus Two-Wheeler Zone">🏍 2W Zone</button>
+        <button class="viewer-btn" id="btn-cam-4w" title="Focus Four-Wheeler Zone">🚗 4W Zone</button>
+        <button class="viewer-btn" id="btn-top-cam" title="Top-Down View">◫ Top</button>
+        <button class="viewer-btn" id="btn-toggle-view" title="Toggle 2D / 3D Layout">2D Grid</button>
+      </div>
+    </div>
+
+    <!-- 2D Fallback / Tabular View -->
+    <div id="viewer-fallback" style="padding:18px;">
+      <!-- Zone A: Two-Wheelers -->
+      <div id="zone-2w-section" style="margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h4 style="font:700 12px var(--font-head);color:var(--cyan);letter-spacing:.5px;text-transform:uppercase;">
+            🏍 Zone A — Two-Wheeler Parking (S01–S06) · ₹{{ "%.0f"|format(rates.two_wheeler) }}/hr
+          </h4>
+          <span style="font-size:10px;color:var(--ink3);">Motorcycles & Scooters</span>
+        </div>
+        <div class="slot-grid">
+          {% for slot in slots if slot.category == 'two_wheeler' %}
+          <div class="slot-tile {{ 'occupied' if slot.status == 'occupied' else 'available' }}" data-slot="{{ slot.slot_code }}" data-cat="two_wheeler">
+            <span class="slot-car">{{ '🏍' if slot.status == 'occupied' else '＋' }}</span>
+            <strong>{{ slot.slot_code }}</strong>
+            <small>{{ 'OCCUPIED' if slot.status == 'occupied' else 'AVAILABLE' }}</small>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Zone B: Four-Wheelers -->
+      <div id="zone-4w-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h4 style="font:700 12px var(--font-head);color:var(--blue);letter-spacing:.5px;text-transform:uppercase;">
+            🚗 Zone B — Four-Wheeler Parking (S07–S12) · ₹{{ "%.0f"|format(rates.four_wheeler) }}/hr
+          </h4>
+          <span style="font-size:10px;color:var(--ink3);">Cars, SUVs & Vans</span>
+        </div>
+        <div class="slot-grid">
+          {% for slot in slots if slot.category == 'four_wheeler' %}
+          <div class="slot-tile {{ 'occupied' if slot.status == 'occupied' else 'available' }}" data-slot="{{ slot.slot_code }}" data-cat="four_wheeler">
+            <span class="slot-car">{{ '🚗' if slot.status == 'occupied' else '＋' }}</span>
+            <strong>{{ slot.slot_code }}</strong>
+            <small>{{ 'OCCUPIED' if slot.status == 'occupied' else 'AVAILABLE' }}</small>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- Active Parking Sessions Panel -->
+  <article class="panel active-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>{% if session.get("role") == "admin" %}Active Parking Sessions{% else %}My Parked Vehicles{% endif %}</h3>
+        <p>{{ stats.active }} active vehicle(s)</p>
+      </div>
+      <a class="text-link" href="{{ url_for('history') }}">View history →</a>
+    </div>
+
+    {% if active %}
+    <div class="active-list" id="active-list-container">
+      {% for s in active %}
+      <div class="active-item" data-session-id="{{ s.id }}">
+        <div class="vehicle-avatar">
+          {% if s.vehicle_category == 'two_wheeler' %}🏍{% else %}🚗{% endif %}
+        </div>
+        <div class="vehicle-info">
+          <strong>{{ s.customer_name }}</strong>
+          <span>
+            <code style="color:var(--ink);font-weight:600;">{{ s.vehicle_number }}</code> · 
+            Slot <span class="slot-tag">{{ s.slot_code }}</span> · 
+            <small style="color:var(--cyan);">{{ '2-Wheeler' if s.vehicle_category == 'two_wheeler' else '4-Wheeler' }}</small>
+          </span>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:3px;">
+            <small class="entry-time" data-entry="{{ s.entry_time }}">Entry {{ s.entry_time.replace('T',' ') }}</small>
+            {% if s.advance_amount and s.advance_amount > 0 %}
+            <small style="color:var(--green);font-size:9px;">Adv: ₹{{ "%.0f"|format(s.advance_amount) }}</small>
+            {% endif %}
+          </div>
+        </div>
+        <a class="btn small outline" href="{{ url_for('exit_vehicle', session_id=s.id) }}">Exit & Pay →</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🅿</div>
+      <strong>No vehicles parked</strong>
+      <p>Register a vehicle to start an active parking session.</p>
+      <a class="text-link" href="{{ url_for('entry') }}">Register first vehicle →</a>
+    </div>
+    {% endif %}
+  </article>
+</section>
+
+<!-- Recent Records + Live Activity Feed Row -->
+<section class="content-grid">
+  <!-- Recent parking records -->
+  <article class="panel recent-panel" style="margin-bottom:0;">
+    <div class="panel-heading">
+      <div>
+        <h3>{% if session.get("role") == "admin" %}Recent Parking Operations{% else %}My Recent Activity{% endif %}</h3>
+        <p>Latest check-ins and exits</p>
+      </div>
+      <a class="text-link" href="{{ url_for('history') }}">All records →</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Vehicle</th>
+            <th>Category</th>
+            <th>Slot</th>
+            <th>Entry</th>
+            <th>Status</th>
+            <th>Fee</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="recent-tbody">
+          {% for s in recent %}
+          <tr>
+            <td><strong>{{ s.customer_name }}</strong></td>
+            <td><code style="color:var(--ink);font-family:monospace;">{{ s.vehicle_number }}</code></td>
+            <td>
+              {% if s.vehicle_category == 'two_wheeler' %}
+              <span style="color:var(--cyan);font-size:10px;">🏍 2-Wheeler</span>
+              {% else %}
+              <span style="color:var(--blue);font-size:10px;">🚗 4-Wheeler</span>
+              {% endif %}
+            </td>
+            <td><span class="slot-tag">{{ s.slot_code }}</span></td>
+            <td>{{ s.entry_time.replace('T',' ') }}</td>
+            <td><span class="status {{ s.status }}">{{ s.status|title }}</span></td>
+            <td>{% if s.amount is not none %}₹{{ "%.2f"|format(s.amount) }}{% else %}—{% endif %}</td>
+            <td>
+              {% if s.status == 'active' %}
+              <a class="btn small outline" href="{{ url_for('exit_vehicle', session_id=s.id) }}">Exit</a>
+              {% elif s.status == 'completed' %}
+              <a class="receipt-link" href="{{ url_for('receipt', session_id=s.id) }}">Receipt</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="table-empty">No parking records yet. Check in a vehicle to begin.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <!-- Live Activity Feed -->
+  <article class="panel" style="margin-bottom:0;">
+    <div class="panel-heading">
+      <div>
+        <h3>System Activity Log</h3>
+        <p>Real-time audit events</p>
+      </div>
+      <span class="mode-pill" style="font-size:9px;padding:5px 10px;"><span class="live-dot"></span> LIVE</span>
+    </div>
+    {% if activity %}
+    <div class="activity-list" id="activity-list">
+      {% for ev in activity %}
+      <div class="activity-item">
+        <div class="activity-icon {{ ev.event_type }}">
+          {% if ev.event_type == 'entry' %}🟢{% elif ev.event_type == 'exit' %}🔴{% else %}🔵{% endif %}
+        </div>
+        <div style="flex:1;">
+          <div class="activity-desc">{{ ev.description }}</div>
+          <div class="activity-time">{{ ev.created_at.replace('T',' ') }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <strong>No activity logged yet</strong>
+      <p>Audit events will appear here as vehicles check in and out.</p>
+    </div>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Server data
+const SLOTS_INIT = {{ slots | tojson }};
+const IS_ADMIN   = {{ (session.get('role') == 'admin') | tojson }};
+const RATES      = {{ rates | tojson }};
+const EXIT_URL   = "{{ url_for('exit_vehicle', session_id=0) }}".replace('/0', '/');
+
+// Interactive Category Filter Tabs
+const tabAll = document.getElementById('tab-all');
+const tab2w  = document.getElementById('tab-2w');
+const tab4w  = document.getElementById('tab-4w');
+const zone2wSection = document.getElementById('zone-2w-section');
+const zone4wSection = document.getElementById('zone-4w-section');
+
+function setCategoryFilter(cat) {
+  [tabAll, tab2w, tab4w].forEach(btn => {
+    btn.classList.remove('primary');
+    btn.classList.add('outline');
+  });
+
+  if (cat === 'two_wheeler') {
+    tab2w.classList.add('primary');
+    tab2w.classList.remove('outline');
+    if (zone2wSection) zone2wSection.style.display = 'block';
+    if (zone4wSection) zone4wSection.style.display = 'none';
+    if (window.smartPark3D && window.smartPark3D.focusZone) {
+      window.smartPark3D.focusZone('two_wheeler');
+    }
+  } else if (cat === 'four_wheeler') {
+    tab4w.classList.add('primary');
+    tab4w.classList.remove('outline');
+    if (zone2wSection) zone2wSection.style.display = 'none';
+    if (zone4wSection) zone4wSection.style.display = 'block';
+    if (window.smartPark3D && window.smartPark3D.focusZone) {
+      window.smartPark3D.focusZone('four_wheeler');
+    }
+  } else {
+    tabAll.classList.add('primary');
+    tabAll.classList.remove('outline');
+    if (zone2wSection) zone2wSection.style.display = 'block';
+    if (zone4wSection) zone4wSection.style.display = 'block';
+    if (window.smartPark3D && window.smartPark3D.focusZone) {
+      window.smartPark3D.focusZone('all');
+    }
+  }
+}
+
+if (tabAll) tabAll.addEventListener('click', () => setCategoryFilter('all'));
+if (tab2w)  tab2w.addEventListener('click',  () => setCategoryFilter('two_wheeler'));
+if (tab4w)  tab4w.addEventListener('click',  () => setCategoryFilter('four_wheeler'));
+</script>
+<script src="{{ url_for('static', filename='parking3d.js') }}" defer></script>
+{% endblock %}

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}System Settings{% endblock %}
+{% block heading %}System & Parking Configuration{% endblock %}
+
+{% block content %}
+<section class="welcome-row">
+  <div>
+    <h2>Administrative Controls</h2>
+    <p>Configure category parking rates, adjust demo simulation duration, and manage slot allocations.</p>
+  </div>
+  <a class="btn outline" href="{{ url_for('dashboard') }}">← Dashboard</a>
+</section>
+
+<div class="form-layout">
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <!-- Hourly Rates Configuration -->
+    <section class="panel form-panel">
+      <div class="panel-heading">
+        <div>
+          <h3>Category Hourly Rates</h3>
+          <p>Configure pricing rules per vehicle category.</p>
+        </div>
+      </div>
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="rates">
+        <label>
+          🏍 Two-Wheeler Rate (₹ / hour) *
+          <input type="number" name="rate_two_wheeler" min="0" step="1.0" value="{{ rates.two_wheeler }}" required>
+          <small class="field-help">Applied to motorcycles and scooters.</small>
+        </label>
+        <label>
+          🚗 Four-Wheeler Rate (₹ / hour) *
+          <input type="number" name="rate_four_wheeler" min="0" step="1.0" value="{{ rates.four_wheeler }}" required>
+          <small class="field-help">Applied to cars, SUVs, and vans.</small>
+        </label>
+        <div class="form-actions full">
+          <button class="btn primary" type="submit">Update Parking Rates</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Admin Demo Duration Adjustment -->
+    <section class="panel form-panel">
+      <div class="panel-heading">
+        <div>
+          <h3>DEMO TIME ADJUSTMENT</h3>
+          <p>Administrator-only simulated duration offset for viva and testing.</p>
+        </div>
+        <span class="mode-pill" style="color:var(--orange);border-color:var(--orange);">ADMIN ONLY</span>
+      </div>
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="demo_duration">
+        <label class="full">
+          Simulated Extra Minutes (+ mins)
+          <input type="number" name="extra_minutes" min="0" max="525600" step="1" value="{{ demo_extra }}" required>
+          <small class="field-help">
+            Add simulated minutes to newly calculated parking durations to demonstrate multi-hour billing without waiting.
+            Set to <strong>0</strong> for real elapsed time.
+          </small>
+        </label>
+        <div class="form-actions full">
+          <button class="btn primary" type="submit">Apply Demo Time Offset</button>
+        </div>
+      </form>
+      <div class="notice demo-warning">
+        <strong>DEMO TIME ADJUSTMENT NOTICE</strong>: Adjusted timestamps are clearly flagged in billing calculations and receipts to distinguish simulated demo records from real-world events.
+      </div>
+    </section>
+
+    <!-- Slot Category Mapping -->
+    <section class="panel form-panel">
+      <div class="panel-heading">
+        <div>
+          <h3>Slot Category Allocation (S01–S12)</h3>
+          <p>Reassign category for available slots. Occupied slots are locked.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Slot</th>
+              <th>Current Category</th>
+              <th>Occupancy</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for slot in slots %}
+            <tr>
+              <td><span class="slot-tag">{{ slot.slot_code }}</span></td>
+              <td>
+                {% if slot.category == 'two_wheeler' %}
+                <span style="color:var(--cyan);font-weight:600;">🏍 Two-Wheeler</span>
+                {% else %}
+                <span style="color:var(--blue);font-weight:600;">🚗 Four-Wheeler</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="status {{ slot.status }}">{{ slot.status|title }}</span>
+              </td>
+              <td>
+                {% if slot.status == 'available' %}
+                <form method="post" style="display:inline;">
+                  <input type="hidden" name="action" value="toggle_slot_category">
+                  <input type="hidden" name="slot_code" value="{{ slot.slot_code }}">
+                  <input type="hidden" name="category" value="{{ 'four_wheeler' if slot.category == 'two_wheeler' else 'two_wheeler' }}">
+                  <button type="submit" class="btn small outline">
+                    Switch to {{ '4-Wheeler' if slot.category == 'two_wheeler' else '2-Wheeler' }}
+                  </button>
+                </form>
+                {% else %}
+                <small style="color:var(--ink3);">Locked (In Use)</small>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Sidebar Status & Reset -->
+  <aside class="panel side-note">
+    <div class="note-icon">⚙</div>
+    <h3>System Status</h3>
+    <div class="settings-row">
+      <span>Total Configured Slots</span>
+      <strong>{{ total }}</strong>
+    </div>
+    <div class="settings-row">
+      <span>Two-Wheeler Rate</span>
+      <strong>₹{{ "%.2f"|format(rates.two_wheeler) }}/hr</strong>
+    </div>
+    <div class="settings-row">
+      <span>Four-Wheeler Rate</span>
+      <strong>₹{{ "%.2f"|format(rates.four_wheeler) }}/hr</strong>
+    </div>
+    <div class="settings-row">
+      <span>Demo Extra Minutes</span>
+      <strong style="color:{% if demo_extra > 0 %}var(--orange){% else %}var(--green){% endif %};">+{{ demo_extra }} min</strong>
+    </div>
+    <div class="settings-row">
+      <span>Database Engine</span>
+      <strong>SQLite 3</strong>
+    </div>
+    <div class="settings-row">
+      <span>3D Visualization</span>
+      <strong style="color:var(--cyan);">Three.js WebGL</strong>
+    </div>
+
+    <div class="settings-section-title">Emergency & Reset</div>
+    <p style="font-size:11px;color:var(--ink3);margin-bottom:12px;">
+      Clear all active sessions, activity logs, and release all parking slots for a fresh presentation run.
+    </p>
+    <form method="post" action="{{ url_for('reset_demo') }}" onsubmit="return confirm('Reset all demo sessions and slots? All parking records and history will be cleared.');">
+      <button class="btn danger full-button" type="submit">Reset Demo Records</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Vehicle Registration{% endblock %}
+{% block heading %}Vehicle Check-In & Entry{% endblock %}
+
+{% block content %}
+<section class="welcome-row">
+  <div>
+    <h2>Register a Vehicle</h2>
+    <p>Select category, allocate a dedicated slot, and record optional advance payment.</p>
+  </div>
+  <a class="btn outline" href="{{ url_for('dashboard') }}">← Dashboard</a>
+</section>
+
+<div class="form-layout">
+  <section class="panel form-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Entry Details</h3>
+        <p>Fields marked * are required.</p>
+      </div>
+    </div>
+
+    <form method="post" class="form-grid" id="entry-form">
+      <!-- Customer name -->
+      <label>Customer Name *
+        <input name="customer_name" placeholder="e.g. Rahul Sharma" required maxlength="100" autocomplete="name">
+      </label>
+
+      <!-- Vehicle registration number -->
+      <label>Vehicle Registration Number *
+        <input name="vehicle_number" placeholder="e.g. MH15 AB 1234" required maxlength="20" style="text-transform:uppercase" autocomplete="off">
+      </label>
+
+      <!-- Vehicle Category -->
+      <label class="full">Vehicle Category *
+        <select name="vehicle_category" id="cat-select" required>
+          <option value="four_wheeler">🚗 Four-Wheeler (Car / SUV / Van)</option>
+          <option value="two_wheeler">🏍 Two-Wheeler (Motorcycle / Scooter)</option>
+        </select>
+        <small class="field-help">Two-wheelers and four-wheelers are parked in separate designated zones.</small>
+      </label>
+
+      <!-- Slot selection (dynamically filtered by category) -->
+      <label class="full">Slot Allocation *
+        <select name="slot_code" id="slot-select" required>
+          <option value="AUTO">Auto-assign first available slot in category</option>
+          <!-- Options populated by JS based on selected category -->
+        </select>
+        <small class="field-help" id="slot-help">Only slots matching the selected category can be allocated.</small>
+      </label>
+
+      <!-- Advance Payment Section -->
+      <label>Advance Payment Amount (₹)
+        <input type="number" name="advance_amount" id="advance-amount" min="0" step="5" value="0" placeholder="0.00">
+        <small class="field-help">Optional advance payment collected upon check-in.</small>
+      </label>
+
+      <label>Advance Payment Method
+        <select name="advance_method" id="advance-method">
+          <option value="cash">Cash Collection</option>
+          <option value="qr_demo">Demo Online QR</option>
+          <option value="none">No Advance (Pay at exit)</option>
+        </select>
+      </label>
+
+      <!-- Summary box -->
+      <div class="entry-summary full">
+        <div>
+          <span>Category Available Slots</span>
+          <strong id="avail-counter">—</strong>
+        </div>
+        <div>
+          <span>Hourly Rate</span>
+          <strong id="rate-counter">—</strong>
+        </div>
+      </div>
+
+      <div class="form-actions full">
+        <a class="btn outline" href="{{ url_for('dashboard') }}">Cancel</a>
+        <button class="btn primary" type="submit" id="btn-submit-entry">Confirm Entry & Park →</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Side Note -->
+  <aside class="panel side-note">
+    <div class="note-icon">🅿</div>
+    <h3>Parking Allocation Rules</h3>
+    <ol>
+      <li><strong>Category Separation</strong>: Motorcycles and scooters are restricted to Two-Wheeler slots (Zone A: S01–S06). Cars and SUVs are restricted to Four-Wheeler slots (Zone B: S07–S12).</li>
+      <li><strong>Collision Prevention</strong>: Slots are assigned atomically; simultaneous requests cannot book the same slot.</li>
+      <li><strong>Advance Payment</strong>: Any advance collected at entry is credited and subtracted from the final bill at exit.</li>
+      <li><strong>Billing Rate</strong>: Two-Wheelers: ₹{{ "%.2f"|format(rates.two_wheeler) }}/hr · Four-Wheelers: ₹{{ "%.2f"|format(rates.four_wheeler) }}/hr.</li>
+    </ol>
+    <div class="notice">
+      Simulation mode active: System manages simulated slots and records. No physical IR sensors attached.
+    </div>
+  </aside>
+</div>
+
+<script>
+// Available slots data from backend
+const AVAILABLE_SLOTS = [
+  {% for s in available %}
+  { slot_code: "{{ s.slot_code }}", category: "{{ s.category }}" },
+  {% endfor %}
+];
+
+const RATES = {
+  two_wheeler: {{ rates.two_wheeler }},
+  four_wheeler: {{ rates.four_wheeler }}
+};
+
+const catSelect = document.getElementById('cat-select');
+const slotSelect = document.getElementById('slot-select');
+const availCounter = document.getElementById('avail-counter');
+const rateCounter = document.getElementById('rate-counter');
+const btnSubmit = document.getElementById('btn-submit-entry');
+const slotHelp = document.getElementById('slot-help');
+
+function updateSlotOptions() {
+  const selectedCat = catSelect.value;
+  const filtered = AVAILABLE_SLOTS.filter(s => s.category === selectedCat);
+  const rate = RATES[selectedCat] || 20;
+
+  availCounter.textContent = filtered.length;
+  rateCounter.textContent = '₹' + rate.toFixed(2) + '/hr';
+
+  // Clear current options
+  slotSelect.innerHTML = '';
+
+  if (filtered.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = `⚠ PARKING FULL for ${selectedCat === 'two_wheeler' ? 'Two-Wheelers' : 'Four-Wheelers'}`;
+    slotSelect.appendChild(opt);
+    slotSelect.disabled = true;
+    btnSubmit.disabled = true;
+    slotHelp.textContent = `All slots in this category are currently occupied.`;
+    slotHelp.style.color = 'var(--red)';
+  } else {
+    slotSelect.disabled = false;
+    btnSubmit.disabled = false;
+    slotHelp.style.color = '';
+    slotHelp.textContent = `Showing ${filtered.length} free slot(s) for this category.`;
+
+    const autoOpt = document.createElement('option');
+    autoOpt.value = 'AUTO';
+    autoOpt.textContent = `⚡ Auto-assign first free slot (${filtered[0].slot_code})`;
+    slotSelect.appendChild(autoOpt);
+
+    filtered.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.slot_code;
+      opt.textContent = `${s.slot_code} — Available`;
+      slotSelect.appendChild(opt);
+    });
+  }
+}
+
+catSelect.addEventListener('change', updateSlotOptions);
+document.addEventListener('DOMContentLoaded', updateSlotOptions);
+</script>
+{% endblock %}

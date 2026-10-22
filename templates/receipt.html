@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Parking Receipt #{{ s.receipt_number }}{% endblock %}
+{% block heading %}Official Parking Receipt{% endblock %}
+
+{% block content %}
+<section class="welcome-row">
+  <div>
+    <h2>Receipt & Payment Summary</h2>
+    <p>Session #{{ s.id }} completed and verified.</p>
+  </div>
+  <div class="receipt-actions">
+    <button class="btn primary" onclick="window.print()">🖨 Print / Save as PDF</button>
+    <a class="btn outline" href="{{ url_for('dashboard') }}">Dashboard →</a>
+    <a class="btn outline" href="{{ url_for('history') }}">History →</a>
+  </div>
+</section>
+
+<div class="receipt-page">
+  <article class="receipt-card">
+    <!-- Header -->
+    <div class="receipt-header">
+      <div>
+        <div class="receipt-brand">
+          Smart<span class="brand-light">Park</span>
+          <small>SMART PARKING MANAGEMENT SYSTEM</small>
+        </div>
+        <p style="color:var(--ink3);font-size:11px;margin-top:4px;">Campus / Facility Parking Receipt</p>
+      </div>
+      <div class="receipt-num">
+        <span>RECEIPT NO</span>
+        <strong>{{ s.receipt_number or ('RCP-' ~ s.id) }}</strong>
+        <div style="font-size:10px;color:var(--ink3);margin-top:4px;">Date: {{ s.exit_time[:10] if s.exit_time else '' }}</div>
+      </div>
+    </div>
+
+    {% if s.payment_method == 'qr_demo' or 'DEMO' in (s.payment_status|upper) %}
+    <div class="notice demo-warning" style="margin-bottom:20px;text-align:center;">
+      <strong>DEMO PAYMENT — NO REAL MONEY TRANSFERRED</strong><br>
+      <small>Academic simulation prototype. No real banking or UPI gateway transaction was performed.</small>
+    </div>
+    {% endif %}
+
+    {% if s.demo_adjusted %}
+    <div class="notice" style="margin-bottom:20px;border-color:rgba(59,130,246,.4);background:var(--blue-soft);color:var(--cyan);">
+      <strong>DEMO TIME ADJUSTMENT APPLIED</strong>: Duration reflects simulated demo offset configured by administrator.
+    </div>
+    {% endif %}
+
+    <!-- Customer & Vehicle Info -->
+    <div class="receipt-section">
+      <h4>Vehicle & Customer Information</h4>
+      <div class="receipt-grid">
+        <div class="receipt-row">
+          <span>CUSTOMER NAME</span>
+          <strong>{{ s.customer_name }}</strong>
+        </div>
+        <div class="receipt-row">
+          <span>VEHICLE NUMBER</span>
+          <strong style="letter-spacing:1px;font-family:monospace;font-size:13px;">{{ s.vehicle_number }}</strong>
+        </div>
+        <div class="receipt-row">
+          <span>VEHICLE CATEGORY</span>
+          <strong>
+            {% if category == 'two_wheeler' %}
+            🏍 Two-Wheeler (Motorcycle / Scooter)
+            {% else %}
+            🚗 Four-Wheeler (Car / SUV)
+            {% endif %}
+          </strong>
+        </div>
+        <div class="receipt-row">
+          <span>ALLOCATED SLOT</span>
+          <strong><span class="slot-tag">{{ s.slot_code }}</span></strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parking Duration -->
+    <div class="receipt-section">
+      <h4>Timing & Rate Details</h4>
+      <div class="receipt-grid">
+        <div class="receipt-row">
+          <span>ENTRY TIME</span>
+          <strong>{{ s.entry_time.replace('T', ' ') }}</strong>
+        </div>
+        <div class="receipt-row">
+          <span>EXIT TIME</span>
+          <strong>{{ s.exit_time.replace('T', ' ') if s.exit_time else '—' }}</strong>
+        </div>
+        <div class="receipt-row">
+          <span>TOTAL DURATION</span>
+          <strong>
+            {{ s.duration_minutes }} minute(s)
+            {% if s.demo_adjusted %}
+            <small style="color:var(--cyan);font-weight:normal;">(Demo: {{ actual_minutes }}m actual)</small>
+            {% endif %}
+          </strong>
+        </div>
+        <div class="receipt-row">
+          <span>HOURLY RATE APPLIED</span>
+          <strong>₹{{ "%.2f"|format(rate) }} / hour</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Billing & Payment Breakdown -->
+    <div class="receipt-section">
+      <h4>Billing & Payment Breakdown</h4>
+      <div class="receipt-grid">
+        <div class="receipt-row">
+          <span>TOTAL PARKING CHARGES</span>
+          <strong style="font-size:14px;">₹{{ "%.2f"|format(total_amount) }}</strong>
+        </div>
+        <div class="receipt-row">
+          <span>ADVANCE PAID (ENTRY)</span>
+          <strong style="color:var(--green);">
+            {% if advance_paid > 0 %}
+            ₹{{ "%.2f"|format(advance_paid) }} ({{ s.advance_method|upper }})
+            {% else %}
+            ₹0.00
+            {% endif %}
+          </strong>
+        </div>
+        <div class="receipt-row">
+          <span>AMOUNT PAID AT EXIT</span>
+          <strong style="color:var(--cyan);">
+            ₹{{ "%.2f"|format(balance_paid) }}
+            {% if balance_paid > 0 %}
+            ({{ s.payment_method|replace('_',' ')|upper }})
+            {% elif advance_paid >= total_amount %}
+            (Covered by Advance)
+            {% endif %}
+          </strong>
+        </div>
+        <div class="receipt-row">
+          <span>REFUND DUE / ISSUED</span>
+          <strong style="color:{% if refund_amount > 0 %}var(--orange){% else %}var(--ink3){% endif %};">
+            {% if refund_amount > 0 %}
+            ₹{{ "%.2f"|format(refund_amount) }}
+            {% else %}
+            ₹0.00
+            {% endif %}
+          </strong>
+        </div>
+        <div class="receipt-row">
+          <span>PAYMENT METHOD</span>
+          <strong>
+            {% if s.payment_method == 'qr_demo' %}
+            Demo Online QR (Simulation)
+            {% elif s.payment_method == 'cash' %}
+            Cash Payment
+            {% elif s.payment_method == 'advance_settled' %}
+            Advance Payment Settlement
+            {% else %}
+            {{ s.payment_method|title }}
+            {% endif %}
+          </strong>
+        </div>
+        <div class="receipt-row">
+          <span>PAYMENT STATUS</span>
+          <strong><span class="status paid">PAID & SETTLED</span></strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Total banner -->
+    <div class="receipt-total">
+      <div>
+        <span>NET AMOUNT COLLECTED</span>
+        <small style="display:block;color:var(--ink3);font-size:10px;margin-top:2px;">Inclusive of all demo parking fees</small>
+      </div>
+      <strong>₹{{ "%.2f"|format(total_amount - refund_amount) }}</strong>
+    </div>
+
+    <!-- Footer -->
+    <div class="receipt-footer">
+      <p>Thank you for parking with <strong>SmartPark</strong>.</p>
+      <p style="margin-top:4px;">System prototype · Verification code: {{ s.receipt_number or s.id }}</p>
+    </div>
+  </article>
+</div>
+{% endblock %}

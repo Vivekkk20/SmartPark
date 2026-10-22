@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SmartPark — Professional Smart Parking Management System">
+  <title>{% block title %}SmartPark{% endblock %} · SmartPark</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  {% if session.get('user_id') %}
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      <span class="brand-icon">P</span>
+      <span>Smart<span class="brand-light">Park</span><small>MANAGEMENT SYSTEM</small></span>
+    </a>
+    <div class="nav-label">NAVIGATION</div>
+    <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+      <span class="nav-ic">▦</span><span>Dashboard</span>
+    </a>
+    <a class="nav-link {% if request.endpoint == 'entry' %}active{% endif %}" href="{{ url_for('entry') }}">
+      <span class="nav-ic">＋</span><span>Vehicle Entry</span>
+    </a>
+    <a class="nav-link {% if request.endpoint == 'history' %}active{% endif %}" href="{{ url_for('history') }}">
+      <span class="nav-ic">◷</span><span>Parking History</span>
+    </a>
+    {% if session.get('role') == 'admin' %}
+    <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
+      <span class="nav-ic">⚙</span><span>Settings</span>
+    </a>
+    {% endif %}
+    <div class="sidebar-bottom">
+      <div class="user-dot">{{ session.get('full_name', 'U')[0]|upper }}</div>
+      <div>
+        <strong>{{ session.get('full_name') }}</strong>
+        <small>{{ session.get('role', 'user')|title }} account</small>
+      </div>
+    </div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">PARKING OPERATIONS</div>
+        <h1>{% block heading %}Overview{% endblock %}</h1>
+      </div>
+      <div class="top-actions">
+        <span class="mode-pill"><span class="live-dot"></span> SIMULATION MODE</span>
+        <span class="role-pill">{{ session.get('role', '')|upper }}</span>
+        <form method="post" action="{{ url_for('logout') }}">
+          <button class="btn outline logout-btn" type="submit">Log out ↗</button>
+        </form>
+      </div>
+    </header>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-wrap">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}<button type="button" class="dismiss" aria-label="Dismiss">×</button></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+    <footer>SmartPark · Academic prototype · Hardware integration can be added separately<span>IR Sensor → Arduino → LCD concept · SIMULATION MODE active</span></footer>
+  </main>
+  {% else %}
+  {% block auth_content %}{% endblock %}
+  {% endif %}
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>
